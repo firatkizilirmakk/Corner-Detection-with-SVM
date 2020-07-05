@@ -6,6 +6,21 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix
 
+def plotImg(img):
+    cv2.imshow("img", img)
+    cv2.waitKey()
+    cv2.destroyAllWindows()
+
+def drawPoints(img, points, labels):
+    for index, point in enumerate(points):
+        i, j = point
+        isCorner = True if labels[index] == 1 else False
+
+        if isCorner:
+            cv2.circle(img,(j, i), 5, (0, 0, 255))
+        else:
+            cv2.circle(img,(j, i), 5, (255, 255, 255))
+
 def selectPoints(harrisImg, maxNumOfKeyPoints, thresholdRate = 0.01):
     cornerPoints = []
     nonCornerPoints = []
@@ -65,13 +80,13 @@ def shuffleLists(pointsX, pointsY):
     return shuffledPointsX, shuffledPointsY
 
 def getKeyPoints(imgGray, shuffle = True):
-    maxNumOfKeyPoints = 2500
+    maxNumOfKeyPoints = 2000
 
     # run harris corner detector on the img
     dst = cv2.cornerHarris(imgGray, 2, 3, 0.04)
 
     # get corner and non corner points on the image up to the given number
-    cornerPoints, nonCornerPoints = selectPoints(dst, maxNumOfKeyPoints, thresholdRate = 0.01)
+    cornerPoints, nonCornerPoints = selectPoints(dst, maxNumOfKeyPoints, thresholdRate = 0.1)
 
     # determine sample length to select this number of elements
     lenSample = determineSampleLength(cornerPoints, nonCornerPoints)
@@ -95,7 +110,7 @@ def getKeyPoints(imgGray, shuffle = True):
 
     return trainPoints, trainLabels, testPoints, testLabels
 
-def gradientsOfRegions(img, points, regionSize = 5):
+def gradientsOfRegions(img, points, regionSize = 7):
     borderedImg = cv2.copyMakeBorder(img, regionSize // 2, regionSize // 2, regionSize // 2, regionSize // 2, cv2.BORDER_CONSTANT)
 
     featureVectors = []
@@ -108,15 +123,19 @@ def gradientsOfRegions(img, points, regionSize = 5):
         region = borderedImg[i - regionSize // 2 : i + regionSize // 2 + 1, j - regionSize // 2 : j + regionSize // 2 + 1]
 
         # calculate gradients
-        gradX = cv2.Sobel(region, cv2.CV_16S, 1, 0)
-        gradY = cv2.Sobel(region, cv2.CV_16S, 0, 1)
+        gradX = cv2.Sobel(region, cv2.CV_32F, 1, 0)
+        gradY = cv2.Sobel(region, cv2.CV_32F, 0, 1)
 
         # reshape gradient list to be a 1D list
-        gradX = list(np.reshape(gradX, regionSize * regionSize))
-        gradY = list(np.reshape(gradY, regionSize * regionSize))
+        gradX = np.reshape(gradX, regionSize * regionSize)
+        gradY = np.reshape(gradY, regionSize * regionSize)
 
-        # concatenate 1D gradients to be a feature vector
-        featureVector = gradX + gradY
+        # calculate the magnitude of the gradients
+        magnitude, _ = cv2.cartToPolar(gradX, gradY)
+        magnitude = np.reshape(magnitude, regionSize * regionSize)
+
+        # concatenate 1D gradients and their magnitude to be a feature vector
+        featureVector = list(gradX) + list(gradY) + list(magnitude)
 
         featureVectors.append(featureVector)
 
@@ -144,11 +163,10 @@ def createTrainTestData(imgDir):
 
         allTestVectors += testVectors
         allTestLabels  += testLabels
-        break
 
     return np.array(allTrainVectors, np.float32), np.array(allTrainLabels), np.array(allTestVectors, np.float32), np.array(allTestLabels)
 
-imgDir = "./frames"
+imgDir = "./img"
 trainX, trainY, testX, testY = createTrainTestData(imgDir)
 
 svm = cv2.ml.SVM_create()
@@ -160,6 +178,8 @@ svm.setTermCriteria((cv2.TERM_CRITERIA_MAX_ITER, 100, 1e-6))
 svm.train(trainX, cv2.ml.ROW_SAMPLE, trainY)
 predictions = svm.predict(testX)[1]
 
-tn, fp, fn, tp = confusion_matrix(testY, predictions, labels = [1, -1]).ravel()
+cm = confusion_matrix(testY, predictions, labels = [1, -1])
+tn, fp, fn, tp = cm.ravel()
+print(cm)
 print((tn, fp, fn, tp))
 print((tp + tn) / len(testY))
