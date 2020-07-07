@@ -50,6 +50,7 @@ def selectCornerPoints(harrisImg, thresholdRate):
     return cornerPoints
 
 def selectNonCornerPoints(harrisImg, imgGray, maxNumOfKeyPoints, regionSize):
+    row, col = harrisImg.shape
     nonCornerPoints = []
 
     # detect non corner points by looking the near region around random points
@@ -63,7 +64,7 @@ def selectNonCornerPoints(harrisImg, imgGray, maxNumOfKeyPoints, regionSize):
         j = random.randint(0, col - 1)
 
         # region around the point
-        region = imgGray[i - regionSize // 2 : i + regionSize // 2 + 1, j - regionSize // 2 : j + regionSize // 2 + 1]
+        region = imgGray[i - (regionSize // 2) : i + (regionSize // 2) + 1, j - (regionSize // 2) : j + (regionSize // 2) + 1]
         regionRow, regionCol = region.shape
 
         # check region is valid
@@ -170,7 +171,7 @@ def calculateFeatureVectors(img, points, regionSize):
         # shift the points to the true points, before the padding
         i, j = i + regionSize // 2, j + regionSize // 2
 
-        region = borderedImg[i - regionSize // 2 : i + regionSize // 2 + 1, j - regionSize // 2 : j + regionSize // 2 + 1]
+        region = borderedImg[i - (regionSize // 2) : i + (regionSize // 2) + 1, j - (regionSize // 2) : j + (regionSize // 2) + 1]
 
         # calculate gradients
         gradX = cv2.Sobel(region, cv2.CV_32F, 1, 0)
@@ -228,11 +229,11 @@ def getTestPointsOnImg(img, regionSize):
     i, j = regionSize // 2, regionSize // 2
 
     # get all points within regionSize distance
-    while i < row:
+    while i < row - (regionSize // 2):
         testPoints.append([i, j])
 
         j += regionSize
-        if j > col:
+        if j > col - (regionSize // 2):
             j = regionSize // 2
             i += regionSize
 
@@ -282,7 +283,7 @@ def main(argv):
     regionSize = 5
     for opt, arg in opts:
         if opt == '-t':
-            isTesting = Truetesting part
+            isTesting = True
 
     if isTesting:
         # load the model
@@ -293,7 +294,7 @@ def main(argv):
         showComparison(imgDir, svm, regionSize)
     else:
         # get training, testing vectors and labels
-        trainX, trainY, testX, testY = createTrainTestData(imgDir)
+        trainX, trainY, testX, testY = createTrainTestData(imgDir, regionSize)
 
         # create and configure the model
         svm = cv2.ml.SVM_create()
