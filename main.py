@@ -1,3 +1,5 @@
+import os
+import time
 import cv2
 import random
 import numpy as np
@@ -37,6 +39,11 @@ def drawPoints(img, points, labels, drawOnlyCorners = False):
             cv2.circle(img,(j, i), 3, (255, 255, 255))
 
 def selectCornerPoints(harrisImg, thresholdRate):
+    """
+        Selects the corner points on the calculated harris image
+        by choosing the points wrt maximum value of harris image * thresholdRate
+    """
+
     row, col = harrisImg.shape
     maxVal = harrisImg.max()
 
@@ -52,6 +59,15 @@ def selectCornerPoints(harrisImg, thresholdRate):
     return cornerPoints
 
 def selectNonCornerPoints(harrisImg, imgGray, maxNumOfKeyPoints, regionSize):
+    """
+        Selects the non corner points on the calculated harris image
+        by checking the gradients of small regions (regionSize * regionSize)
+        around random points.
+
+        If the sum of the magnitude of the gradients are less than nonCornerThreshold
+        the point is selected as non corner, expecting a flat region.
+    """
+
     row, col = harrisImg.shape
     nonCornerPoints = []
 
@@ -89,23 +105,34 @@ def selectNonCornerPoints(harrisImg, imgGray, maxNumOfKeyPoints, regionSize):
     return nonCornerPoints
 
 def selectPoints(harrisImg, imgGray, maxNumOfKeyPoints, regionSize ,thresholdRate = 0.01):
+    """
+        Selects corner and non corner points.
 
-    # selects corner and non corner points
-    # selects corner from the image applied harris
-    # selects non corner from gray image by looking gradients
+        Selects corner from the image applied harris
+        Selects non corner from gray image by looking gradients
+    """
+
     cornerPoints = selectCornerPoints(harrisImg, thresholdRate)
     nonCornerPoints = selectNonCornerPoints(harrisImg, imgGray, maxNumOfKeyPoints, regionSize)
 
     return cornerPoints, nonCornerPoints
 
 def selectSamplePoints(points, lenSample, testRate = 0.1):
-    # select arbitrary elements up to sample length
+    """
+        Selects arbitrary elements up to sample length
+    """
+
     sampledPoints = random.sample(points, lenSample)
     sampleTrain, sampleTest = train_test_split(sampledPoints, test_size = testRate)
 
     return sampleTrain, sampleTest
 
 def determineSampleLength(cornerPoints, nonCornerPoints):
+    """
+        Determines the sample length to create the dataset as
+        equally divided for corner and non corner points.
+    """
+
     lenCorner = len(cornerPoints)
     lenNonCorner = len(nonCornerPoints)
 
@@ -116,6 +143,11 @@ def determineSampleLength(cornerPoints, nonCornerPoints):
     return lenSample
 
 def createLabels(cornerPoints, nonCornerPoints):
+    """
+        Creates labels of the points.
+        1 for corner points and -1 for non corner points
+    """
+
     lenCorner = len(cornerPoints)
     lenNonCorner = len(nonCornerPoints)
 
@@ -126,6 +158,10 @@ def createLabels(cornerPoints, nonCornerPoints):
     return labels
 
 def shuffleLists(pointsX, pointsY):
+    """
+        Shuffles the points with their labels
+    """
+
     pointsZipList = list(zip(pointsX, pointsY))
     random.shuffle(pointsZipList)
 
@@ -133,6 +169,12 @@ def shuffleLists(pointsX, pointsY):
     return shuffledPointsX, shuffledPointsY
 
 def getKeyPoints(imgGray, regionSize, shuffle = True):
+    """
+        Selects the training and testing points consisting of corner and non corner points
+        for one image. These points are combined with other points from other images to create
+        the dataset.
+    """
+
     maxNumOfKeyPoints = 2000
 
     # run harris corner detector on the img
@@ -164,6 +206,18 @@ def getKeyPoints(imgGray, regionSize, shuffle = True):
     return trainPoints, trainLabels, testPoints, testLabels
 
 def calculateFeatureVectors(img, points, regionSize):
+    """
+        Creates the feature vectors by calculating the gradients of the regions
+        around the points and their magnitudes.
+
+        Gets the region (regionSize x regionSize) around the point,
+        applies Sobel operator to both x and y directions.
+        Calculates the magnitude of these gradients.
+
+        Flattens the calculated results and concatenates them to be a feature vector
+        of size (regionSize x regionSize) x 3.
+    """
+
     borderedImg = cv2.copyMakeBorder(img, regionSize // 2, regionSize // 2, regionSize // 2, regionSize // 2, cv2.BORDER_CONSTANT)
 
     featureVectors = []
@@ -194,8 +248,15 @@ def calculateFeatureVectors(img, points, regionSize):
 
     return featureVectors
 
-import os
 def createTrainTestData(imgDir, regionSize):
+    """
+        Traverses the given directory containing images.
+        Gets the corner and non corner points on the images with training and testing sets.
+        Calculates the corresponding feature vectors and creates their labels.
+
+        Returns points and labels of the training and testing sets
+    """
+
     directory = os.listdir(imgDir)
 
     allTrainVectors, allTestVectors = [], []
@@ -225,6 +286,12 @@ def createTrainTestData(imgDir, regionSize):
     return np.array(allTrainVectors, np.float32), np.array(allTrainLabels), np.array(allTestVectors, np.float32), np.array(allTestLabels)
 
 def getTestPointsOnImg(img, regionSize):
+    """
+        Traverses the image by regionSize * regionSize squares
+        Returns the center point of the squares as the points to check
+        their corner or noncorner state
+    """
+
     row, col = img.shape
 
     testPoints = []
