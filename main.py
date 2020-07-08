@@ -2,9 +2,11 @@ import cv2
 import random
 import numpy as np
 from matplotlib import pyplot as plt
+import seaborn as sn
+import pandas as pd
 
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, accuracy_score, classification_report
 
 import sys, getopt
 
@@ -30,9 +32,9 @@ def drawPoints(img, points, labels, drawOnlyCorners = False):
         isCorner = True if labels[index] == 1 else False
 
         if isCorner:
-            cv2.circle(img,(j, i), 5, (0, 0, 255))
+            cv2.circle(img,(j, i), 3, (0, 0, 255))
         elif not drawOnlyCorners:
-            cv2.circle(img,(j, i), 5, (0, 0, 0))
+            cv2.circle(img,(j, i), 3, (255, 255, 255))
 
 def selectCornerPoints(harrisImg, thresholdRate):
     row, col = harrisImg.shape
@@ -277,22 +279,36 @@ def showComparison(imgDir, svmModel, regionSize):
 imgDir = "./img"
 
 def main(argv):
-    opts, args = getopt.getopt(argv, "t")
+    opts, args = getopt.getopt(argv, "m:r:t")
 
     isTesting = False
-    regionSize = 5
+    modelPath = None
+    regionSize = -1
     for opt, arg in opts:
         if opt == '-t':
             isTesting = True
+        elif opt == '-m':
+            modelPath = arg
+        elif opt == '-r':
+            regionSize = int(arg)
+
+    if modelPath is None:
+        print("Model path is needed")
+        sys.exit(-1)
+    elif regionSize == -1:
+        print("Region size is needed")
+        sys.exit(-1)
 
     if isTesting:
         # load the model
-        svm = cv2.ml.SVM_load("svm_model_09")
+        svm = cv2.ml.SVM_load(modelPath)
 
         # create feature vectors on images, check their corner or noncorner state
         # show the predicted and harris corner points for comparison
         showComparison(imgDir, svm, regionSize)
     else:
+        svmName  = "svm_" + str(regionSize)
+
         # get training, testing vectors and labels
         trainX, trainY, testX, testY = createTrainTestData(imgDir, regionSize)
 
@@ -307,18 +323,22 @@ def main(argv):
         svm.train(trainX, cv2.ml.ROW_SAMPLE, trainY)
 
         # save the model
-        svm.save("svm_model")
+        svm.save(svmName)
 
         # make predictions
         predictions = svm.predict(testX)[1]
 
         cm = confusion_matrix(testY, predictions, labels = [1, -1])
-        tn, fp, fn, tp = cm.ravel()
-        accuracy = (tp + tn) / len(testY)
+        accuracy = accuracy_score(testY, predictions)
+        report = classification_report(testY, predictions)
 
-        # show confusion matrix and overall accuracy
         print(cm)
         print(accuracy)
+        print(report)
+
+        sn.set(font_scale=1.4) # for label size
+        sn.heatmap(cm, annot=True, annot_kws={"size": 16}) # font size
+        plt.savefig(svmName)
 
 if __name__ == "__main__":
     main(sys.argv[1: ])
