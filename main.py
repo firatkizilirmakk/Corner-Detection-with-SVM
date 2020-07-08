@@ -241,7 +241,83 @@ def getTestPointsOnImg(img, regionSize):
 
     return testPoints
 
-def showComparison(imgDir, svmModel, regionSize):
+def addGausianNoise(img, noiseAmount):
+    """
+        Applies a Gaussian noise to the given image
+    """
+    row, col, ch = img.shape
+
+    normalizedImg = cv2.normalize(img, None, 0.0, 1.0, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+
+    noise = np.zeros((row, col, ch), dtype=np.float64)
+    cv2.randn(noise, 0, noiseAmount)
+    normalizedImg = normalizedImg + noise
+
+    noisy = cv2.normalize(normalizedImg, None, 0.0, 255.0, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+
+    return noisy
+
+def applyMethods(img, regionSize, svmModel):
+    """
+        Applies SVM and Harris Corner Detectors on the given image
+        Returns points, corresponding labels and
+        the time elapsed for the calculations
+    """
+
+    # apply gaussian blur and convert to grayscale image
+    blurredImg = cv2.GaussianBlur(img, (5, 5), 0)
+    imgGray = cv2.cvtColor(blurredImg, cv2.COLOR_RGB2GRAY)
+
+    # get corner points from SVM and Harris
+    cornerPointsBySVM, cornerLabelsOfSVM, elapsedTimeSVM = cornerSVM(imgGray, regionSize, svmModel)
+    cornerPointsByHarris, cornerLabelsOfHarris, elapsedTimeHarris = cornerHarris(imgGray)
+
+    return (cornerPointsBySVM, cornerLabelsOfSVM, elapsedTimeSVM), (cornerPointsByHarris, cornerLabelsOfHarris, elapsedTimeHarris)
+
+def calculateAntiNoiseCriterion(normalInfo, noisyInfo):
+    """
+        Calculates Anti Noise Criterion of the methods.
+        Finds the intersection of the corner points detected for the
+        normal and noisy image by a method (either SVM or Harris).
+
+        Then calculates and returns the score as |set1 ∩ set2| / min(|set1|, |set2|)
+        Higher the score, more robust the method to noises
+    """
+
+    points, labels, _ = normalInfo
+    noisyPoints, noisyLabels, _ = noisyInfo
+
+    # get corner points
+    cornerPoints = [points[index] for index, label in enumerate(labels) if label == 1]
+    noisyCornerPoints = [noisyPoints[index] for index, label in enumerate(noisyLabels) if label == 1]
+
+    nt1 = map(tuple, cornerPoints)
+    nt2 = map(tuple, noisyCornerPoints)
+
+    st1 = set(nt1)
+    st2 = set(nt2)
+
+    # find the intersection
+    intersectionLen = len(st1.intersection(st2))
+    minPointsLen = min(len(cornerPoints), len(noisyCornerPoints))
+
+    # calculate the score
+    score = 0.0
+    if len(cornerPoints) != 0 and len(noisyCornerPoints) != 0:
+        score = intersectionLen / minPointsLen
+
+    return score
+
+def showComparison(imgDir, svmModel, regionSize, plotFigures = True):
+    totalTimeSVM = 0
+    totalTimeHarris = 0
+
+    totalAntiNoisyScoreSVM = 0
+    totalAntiNoisyScoreHarris = 0
+    counter = 0
+
+    noiseAmount = 0.05
+
     directory = os.listdir(imgDir)
 
     for fileName in directory:
@@ -249,32 +325,98 @@ def showComparison(imgDir, svmModel, regionSize):
 
         # read the image
         img = cv2.imread(path)
+        noisyImg = addGausianNoise(img, noiseAmount)
+
+        # copy the image for later use
         imgCopy = img.copy()
+        imgCopy2 = img.copy()
 
-        # apply gaussian blur and convert to grayscale image
-        blurredImg = cv2.GaussianBlur(img, (5, 5), 0)
-        imgGray = cv2.cvtColor(blurredImg, cv2.COLOR_RGB2GRAY)
+        # apply the svm and harris on the image separately
+        svmInfo, harrisInfo = applyMethods(img, regionSize, svmModel)
 
-        # get all points within regionSize distance
-        # and calculate their feature vectors
-        testPoints = getTestPointsOnImg(imgGray, regionSize)
-        gradients = calculateFeatureVectors(imgGray, testPoints, regionSize)
+        # apply the svm and harris on noisy image
+        noisySvmInfo, noisyHarrisInfo = applyMethods(noisyImg, regionSize, svmModel)
 
-        # predict the feature vectors
-        testGradients = np.array(gradients, dtype = np.float32)
-        predictions = svmModel.predict(testGradients)[1]
+        antiNoiseScoreSVM = calculateAntiNoiseCriterion(svmInfo, noisySvmInfo)
+        antiNoiseScoreHarris = calculateAntiNoiseCriterion(harrisInfo, noisyHarrisInfo)
 
-        # apply the harris corner detector too for later comparison
-        dst = cv2.cornerHarris(imgGray, 2, 3, 0.04)
-        cornerPointsByHarris = selectCornerPoints(dst, thresholdRate = 0.01)
-        cornerLabelsOfHarris = createLabels(cornerPointsByHarris, [])
+        totalAntiNoisyScoreSVM += antiNoiseScoreSVM
+        totalAntiNoisyScoreHarris += antiNoiseScoreHarris
 
-        # draw points on the images
-        drawPoints(img, testPoints, predictions, drawOnlyCorners = True)
-        drawPoints(imgCopy, cornerPointsByHarris, cornerLabelsOfHarris, drawOnlyCorners = True)
+        print("Anti Noisy score of SVM : {}".format(antiNoiseScoreSVM))
+        print("Anti Noisy score of Harris : {}".format(antiNoiseScoreHarris))
 
-        # show the comparison
-        plotComparison(img, imgCopy)
+        # extract necessary info from tuples
+        cornerPointsBySVM, cornerLabelsOfSVM, elapsedTimeSVM = svmInfo
+        cornerPointsByHarris, cornerLabelsOfHarris, elapsedTimeHarris = harrisInfo
+
+        # add elapsed time to total for later calculation of avg
+        totalTimeSVM += elapsedTimeSVM
+        totalTimeHarris += elapsedTimeHarris
+        counter += 1
+
+        print("Calculation time of SVM : {}".format(elapsedTimeSVM))
+        print("Calculation time of Harris : {}\n".format(elapsedTimeHarris))
+
+        # plot the detection results of svm and harris if required
+        if plotFigures:
+            # draw points on the images
+            drawPoints(imgCopy, cornerPointsBySVM, cornerLabelsOfSVM, drawOnlyCorners = True)
+            drawPoints(imgCopy2, cornerPointsByHarris, cornerLabelsOfHarris, drawOnlyCorners = True)
+
+            # show the comparison
+            plotComparison(imgCopy, imgCopy2)
+
+    avgTimeSVM = totalTimeSVM / counter
+    avgTimeHarris = totalTimeHarris / counter
+
+    avgAntiNoiseScoreSVM = totalAntiNoisyScoreSVM / counter
+    avgAntiNoiseScoreHarris = totalAntiNoisyScoreHarris / counter
+
+    print("Average calculation time of SVM : {}".format(avgTimeSVM))
+    print("Average calculation time of Harris : {}\n".format(avgTimeHarris))
+
+    print("Average anti noisy time of SVM : {}".format(avgAntiNoiseScoreSVM))
+    print("Average anti noisy time of Harris : {}\n".format(avgAntiNoiseScoreHarris))
+
+def cornerHarris(imgGray):
+    """
+        Applies the Harris Corner Detector on the given image
+        Returns selected corner points with their label labels (full of 1).
+    """
+
+    # apply the harris corner detector too for later comparison
+    t1 = time.time()
+    dst = cv2.cornerHarris(imgGray, 2, 3, 0.04)
+    t2 = time.time()
+
+    cornerPointsByHarris = selectCornerPoints(dst, thresholdRate = 0.01)
+    cornerLabelsOfHarris = createLabels(cornerPointsByHarris, [])
+
+    return cornerPointsByHarris, cornerLabelsOfHarris, round((t2 - t1), 3)
+
+def cornerSVM(imgGray, regionSize, svmModel):
+    """
+        Gets the test points on the given image.
+        Calculates the gradients of near regions
+        Employs the trained SVM to check whether points are corner or not
+
+        Returns all the points with corresponding labels stating corner or noncorner 
+    """
+
+    t1 = time.time()
+    # get all points within regionSize distance
+    # and calculate their feature vectors
+    testPoints = getTestPointsOnImg(imgGray, regionSize)
+    gradients = calculateFeatureVectors(imgGray, testPoints, regionSize)
+
+    # predict using the feature vectors
+    testGradients = np.array(gradients, dtype = np.float32)
+    predictions = svmModel.predict(testGradients)[1]
+
+    t2 = time.time()
+
+    return testPoints, predictions, round((t2 - t1), 3)
 
 imgDir = "./img"
 
@@ -305,7 +447,7 @@ def main(argv):
 
         # create feature vectors on images, check their corner or noncorner state
         # show the predicted and harris corner points for comparison
-        showComparison(imgDir, svm, regionSize)
+        showComparison(imgDir, svm, regionSize, plotFigures=False)
     else:
         svmName  = "svm_" + str(regionSize)
 
