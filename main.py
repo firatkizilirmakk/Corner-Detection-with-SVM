@@ -18,13 +18,34 @@ def plotImg(img):
     cv2.destroyAllWindows()
 
 def plotComparison(predicted, harris):
+    fontsize = "18"
+
     fig, ax = plt.subplots(1, 2)
 
     ax[0].imshow(predicted)
     ax[1].imshow(harris)
 
-    ax[0].set_xlabel("Predicted Corner Points")
-    ax[1].set_xlabel("Harris Corner Points")
+    ax[0].set_xlabel("SVM Corner Points", fontsize = fontsize)
+    ax[1].set_xlabel("Harris Corner Points", fontsize = fontsize)
+
+    plt.show()
+
+def plotComparisonWithNoisy(predicted, predictedNoisy, harris, harrisNoisy, noiseAmount):
+    fontsize = "18"
+
+    fig, ax = plt.subplots(2, 2,figsize = (10, 8))
+
+    ax[0][0].imshow(predicted)
+    ax[0][1].imshow(harris)
+
+    ax[1][0].imshow(predictedNoisy)
+    ax[1][1].imshow(harrisNoisy)
+
+    ax[0][0].set_xlabel("Predicted Corner Points", fontsize = fontsize)
+    ax[0][1].set_xlabel("Harris Corner Points", fontsize = fontsize)
+
+    ax[1][0].set_xlabel("Predicted Corner Points under Gaussian " + str(noiseAmount), fontsize = fontsize)
+    ax[1][1].set_xlabel("Harris Corner Points under Gaussian " + str(noiseAmount), fontsize = fontsize)
 
     plt.show()
 
@@ -34,9 +55,9 @@ def drawPoints(img, points, labels, drawOnlyCorners = False):
         isCorner = True if labels[index] == 1 else False
 
         if isCorner:
-            cv2.circle(img,(j, i), 3, (0, 0, 255))
+            cv2.circle(img,(j, i), 5, (255, 0, 0))
         elif not drawOnlyCorners:
-            cv2.circle(img,(j, i), 3, (255, 255, 255))
+            cv2.circle(img,(j, i), 5, (255, 255, 255))
 
 def selectCornerPoints(harrisImg, thresholdRate):
     """
@@ -347,7 +368,7 @@ def calculateAntiNoiseCriterion(normalInfo, noisyInfo):
         Finds the intersection of the corner points detected for the
         normal and noisy image by a method (either SVM or Harris).
 
-        Then calculates and returns the score as |set1 ∩ set2| / min(|set1|, |set2|)
+        Then calculates and returns the score as |set1 ∩ set2| / max(|set1|, |set2|)
         Higher the score, more robust the method to noises
     """
 
@@ -365,17 +386,18 @@ def calculateAntiNoiseCriterion(normalInfo, noisyInfo):
     st2 = set(nt2)
 
     # find the intersection
-    intersectionLen = len(st1.intersection(st2))
-    minPointsLen = min(len(cornerPoints), len(noisyCornerPoints))
+    intersection = st1.intersection(st2)
+    intersectionLen = len(intersection)
+    minPointsLen = max(len(cornerPoints), len(noisyCornerPoints))
 
     # calculate the score
     score = 0.0
     if len(cornerPoints) != 0 and len(noisyCornerPoints) != 0:
-        score = intersectionLen / minPointsLen
+        score = (intersectionLen / minPointsLen) * 100
 
     return score
 
-def showComparison(imgDir, svmModel, regionSize, plotFigures = True):
+def showComparison(imgDir, svmModel, regionSize, plotFigures, plotNoisyFigures):
     totalTimeSVM = 0
     totalTimeHarris = 0
 
@@ -395,8 +417,10 @@ def showComparison(imgDir, svmModel, regionSize, plotFigures = True):
         noisyImg = addGausianNoise(img, noiseAmount)
 
         # copy the image for later use
-        imgCopy = img.copy()
-        imgCopy2 = img.copy()
+        imgCopy = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        imgCopy2 = imgCopy.copy()
+        imgCopy3 = imgCopy.copy()
+        imgCopy4 = imgCopy.copy()
 
         # apply the svm and harris on the image separately
         svmInfo, harrisInfo = applyMethods(img, regionSize, svmModel)
@@ -404,6 +428,7 @@ def showComparison(imgDir, svmModel, regionSize, plotFigures = True):
         # apply the svm and harris on noisy image
         noisySvmInfo, noisyHarrisInfo = applyMethods(noisyImg, regionSize, svmModel)
 
+        # calculate anti noise score
         antiNoiseScoreSVM = calculateAntiNoiseCriterion(svmInfo, noisySvmInfo)
         antiNoiseScoreHarris = calculateAntiNoiseCriterion(harrisInfo, noisyHarrisInfo)
 
@@ -416,6 +441,9 @@ def showComparison(imgDir, svmModel, regionSize, plotFigures = True):
         # extract necessary info from tuples
         cornerPointsBySVM, cornerLabelsOfSVM, elapsedTimeSVM = svmInfo
         cornerPointsByHarris, cornerLabelsOfHarris, elapsedTimeHarris = harrisInfo
+
+        noisyCornerPointsBySVM, noisyCornerLabelsOfSVM, _ = noisySvmInfo
+        noisyCornerPointsByHarris, noisyCornerLabelsOfHarris, _ = noisyHarrisInfo        
 
         # add elapsed time to total for later calculation of avg
         totalTimeSVM += elapsedTimeSVM
@@ -431,8 +459,14 @@ def showComparison(imgDir, svmModel, regionSize, plotFigures = True):
             drawPoints(imgCopy, cornerPointsBySVM, cornerLabelsOfSVM, drawOnlyCorners = True)
             drawPoints(imgCopy2, cornerPointsByHarris, cornerLabelsOfHarris, drawOnlyCorners = True)
 
-            # show the comparison
-            plotComparison(imgCopy, imgCopy2)
+            if plotNoisyFigures:
+                drawPoints(imgCopy3, noisyCornerPointsBySVM, noisyCornerLabelsOfSVM, drawOnlyCorners = True)
+                drawPoints(imgCopy4, noisyCornerPointsByHarris, noisyCornerLabelsOfHarris, drawOnlyCorners = True)
+
+                plotComparisonWithNoisy(imgCopy, imgCopy3, imgCopy2, imgCopy4, noiseAmount)
+            else:
+                # show the comparison
+                plotComparison(imgCopy, imgCopy2)
 
     avgTimeSVM = totalTimeSVM / counter
     avgTimeHarris = totalTimeHarris / counter
@@ -514,10 +548,8 @@ def main(argv):
 
         # create feature vectors on images, check their corner or noncorner state
         # show the predicted and harris corner points for comparison
-        showComparison(imgDir, svm, regionSize, plotFigures=False)
+        showComparison(imgDir, svm, regionSize, plotFigures = True, plotNoisyFigures = False)
     else:
-        svmName  = "svm_" + str(regionSize)
-
         # get training, testing vectors and labels
         trainX, trainY, testX, testY = createTrainTestData(imgDir, regionSize)
 
@@ -532,7 +564,7 @@ def main(argv):
         svm.train(trainX, cv2.ml.ROW_SAMPLE, trainY)
 
         # save the model
-        svm.save(svmName)
+        svm.save(modelPath)
 
         # make predictions
         predictions = svm.predict(testX)[1]
@@ -547,7 +579,7 @@ def main(argv):
 
         sn.set(font_scale=1.4) # for label size
         sn.heatmap(cm, annot=True, annot_kws={"size": 16}) # font size
-        plt.savefig(svmName)
+        plt.savefig(modelPath)
 
 if __name__ == "__main__":
     main(sys.argv[1: ])
