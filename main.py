@@ -9,6 +9,7 @@ import pandas as pd
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, accuracy_score, classification_report
+from sklearn.metrics import cohen_kappa_score
 
 import sys, getopt
 
@@ -569,10 +570,12 @@ def main(argv):
         # make predictions
         predictions = svm.predict(testX)[1]
 
+        kappa = cohen_kappa_score(testY, predictions)
         cm = confusion_matrix(testY, predictions, labels = [1, -1])
         accuracy = accuracy_score(testY, predictions)
         report = classification_report(testY, predictions)
 
+        print(kappa)
         print(cm)
         print(accuracy)
         print(report)
