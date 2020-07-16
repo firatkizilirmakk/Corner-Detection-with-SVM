@@ -9,7 +9,7 @@ Corner detection is an approach to infer the content of an image while providing
 Since the corners are the points of gradient differentials, the dataset must consists of images with high texture to clearly discriminate the corner and non corner points. To this end, a public dataset that has been used for semantic segmentation named Barcelona Dataset, released by University of North Carolina at Chapel Hill, is selected. The dataset contains 2688 images, each in shape of 640 x 480, and 33 labels from sidewalk to office view. Yet, in order to satisfy the lots of texture requirement, images of the building, sidewalk and office view were selected and others were eliminated. Number of elements of the dataset was reduced to 270 after this selection criteria. So that, the dataset used to train and test the model consists of 270 images, in shape of 640 x 480 pixels. From each image in the dataset, nearly 4000 points were selected as corner and non corner, 2000 for each. As a consequence, this selection led to 872.330 training and 96.998 testing points.
 
 <p align="center">
-  <img src="documentimg/example.jpg" alt="Example Image from the Dataset" style = "width:350px">
+  <img src="documentimg/example.jpg" alt="Example Image from the Dataset" width = "350px">
 </p>
 
 
@@ -70,13 +70,13 @@ where B​1 is the corner set of a image and B​2 is the corner set of an image
 - In addition to the evaluation of the speed of the methods, their robustness under Gaussian noise is measured to compare the methods. As explained in the algorithmic steps section, anti-noise criterion is employed to check if the corner detection method finds the same points as the corner or not and by how many. To this end, methods are tested on both noisy and normal images. Two Gaussian noises with 0.05 and 0.1 sigma values are applied separately to every image in the dataset and then the images are tested with the methods.
 
 <p align="center">
-  <img src="documentimg/gaussian_comparison.png" alt="Behavior Comparison under Gaussian" style = "width:600px">
+  <img src="documentimg/gaussian_comparison.png" alt="Behavior Comparison under Gaussian" width="600px">
 </p>
 
 Figure below shows the anti-noise score of the methods under Gaussian noises with 0.05 and 0.1 sigma values. As shown above, more the noise was less the performance achieved. Yet, Harris detector seemed considerably more robust under more Gaussian noise. On the other hand, SVM corner detector seemed applicable under little noises.
 
 <p align="center">
-  <img src="documentimg/anti_noise_score_comparison.png" alt="Anti Noise Scores Comparison" style = "width:700px">
+  <img src="documentimg/anti_noise_score_comparison.png" alt="Anti Noise Scores Comparison" width="700px">
 </p>
 
 As a consequence, Harris corner detector performs better regarding speed and robustness comparison. For the speed comparison, Harris make the calculations approximately 50 times faster than the SVM model. Also, Harris nearly finds the same corner points under high and low Gaussian noises yet SVM model is only able to find acceptable corner points under low noise.
@@ -84,9 +84,9 @@ As a consequence, Harris corner detector performs better regarding speed and rob
 #### Comparison Examples
 
 <p align="center">
-  <img src="documentimg/comparison1.png" alt="Svm and Harris Comparison-1" style = "width:700px">
+  <img src="documentimg/comparison1.png" alt="Svm and Harris Comparison-1" width="700px">
 </p>
 
 <p align="center">
-  <img src="documentimg/comparison2.png" alt="Svm and Harris Comparison-2" style = "width:700px">
+  <img src="documentimg/comparison2.png" alt="Svm and Harris Comparison-2" width="700px">
 </p>
